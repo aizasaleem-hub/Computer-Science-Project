@@ -1,0 +1,10 @@
+# secrets
+.env
+.env.*
+*.env
+
+# python virtual environments
+venv/
+venv/
+env/
+ENV/
