@@ -8,13 +8,33 @@
 
 <div class="chat-container">
   <h2>Report Reviewer (Constitution of Pakistan 1973)</h2>
-  <p class="hint">Paste text or upload a PDF/DOCX/TXT file. Both can be combined.</p>
+  <p class="hint">Authenticate, then paste text or upload a PDF/DOCX/TXT file. Both can be combined.</p>
+
+  <div class="auth-card">
+    <h3>Auth</h3>
+    <div class="auth-grid">
+      <input id="username" placeholder="Username" />
+      <input id="email" placeholder="Email (for signup)" />
+      <input id="password" type="password" placeholder="Password" />
+    </div>
+    <div class="auth-actions">
+      <button id="signup-btn" onclick="signUp()">Sign Up</button>
+      <button id="login-btn" onclick="login()">Login</button>
+      <span id="auth-status" class="meta"></span>
+    </div>
+  </div>
   <textarea id="report-input" placeholder="Paste the report text here..." rows="10"></textarea>
   <div class="upload-row">
     <input id="report-file" type="file" accept=".pdf,.doc,.docx,.txt" />
     <span id="file-label"></span>
   </div>
-  <button onclick="analyzeReport()">Analyze</button>
+  <button id="analyze-btn" onclick="analyzeReport()">Analyze</button>
+
+  <div id="analysis-section">
+    <h3>Weaknesses & Suggested Changes</h3>
+    <div id="weakness-list" class="weakness-list"></div>
+    <button id="refine-btn" onclick="generateRefined()" disabled>Generate Refined Report</button>
+  </div>
 
   <div id="result-box" class="bot"></div>
 </div>

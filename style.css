@@ -69,3 +69,84 @@ button:hover {
   white-space: pre-wrap;
   color: #0f172a;
 }
+
+h3 {
+  margin-top: 20px;
+  margin-bottom: 10px;
+  color: #0f172a;
+}
+
+.weakness-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.weakness-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.weakness-item header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.weakness-item .meta {
+  color: #475569;
+  font-size: 13px;
+}
+
+.weakness-item p {
+  margin: 6px 0;
+  color: #0f172a;
+}
+
+#refine-btn {
+  margin-top: 4px;
+  background: #0ea5e9;
+}
+
+#refine-btn:disabled {
+  background: #cbd5e1;
+  cursor: not-allowed;
+  color: #475569;
+}
+
+.auth-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  margin-bottom: 16px;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.auth-card input {
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+
+.auth-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.meta {
+  color: #475569;
+  font-size: 13px;
+}
