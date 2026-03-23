@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
@@ -17,13 +17,32 @@ def _prepare_context(report_text: str, k: int = 6) -> str:
     return format_context(context_docs)
 
 
-def analyze_report(report_text: str) -> Dict[str, Any]:
+def _format_memory(memory: Optional[List[Dict[str, Any]]]) -> str:
+    if not memory:
+        return "[no prior user history]"
+    snippets = []
+    for item in memory:
+        content = (item.get("content") or "").strip()
+        if not content:
+            continue
+        snippets.append(
+            (
+                f"Conversation: {item.get('conversation_title', 'Untitled')}\n"
+                f"Role: {item.get('role', 'unknown')} | Kind: {item.get('kind', 'message')}\n"
+                f"Content: {content[:600]}"
+            )
+        )
+    return "\n\n".join(snippets) if snippets else "[no prior user history]"
+
+
+def analyze_report(report_text: str, memory: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
     Review a report, identify weaknesses, and return structured suggestions.
 
     Returns a dict: {overview, weaknesses, normalized_report}
     """
     context = _prepare_context(report_text)
+    prior_memory = _format_memory(memory)
 
     messages = [
         {
@@ -39,13 +58,15 @@ def analyze_report(report_text: str) -> Dict[str, Any]:
                 "Rules:\n"
                 "- id must be short and stable (e.g., W1, W2...).\n"
                 "- Every suggestion must be tied to the cited article/page from context; if not available, set citation to null and say 'Context gap'.\n"
-                "- Be concise; avoid redundancy."
+                "- Be concise; avoid redundancy.\n"
+                "- Use prior user history only for continuity, never to invent facts."
             ),
         },
         {
             "role": "user",
             "content": (
                 f"Report to review:\n{report_text[:8000]}\n\n"
+                f"Prior user history:\n{prior_memory}\n\n"
                 f"Reference context from the Constitution:\n{context or '[no matching context found]'}"
             ),
         },
@@ -82,7 +103,11 @@ def analyze_report(report_text: str) -> Dict[str, Any]:
     }
 
 
-def refine_report(report_text: str, selected_changes: List[Dict[str, str]]) -> str:
+def refine_report(
+    report_text: str,
+    selected_changes: List[Dict[str, str]],
+    memory: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     """
     Rewrite the report applying ONLY the user-approved changes.
     selected_changes: list of dicts with at least 'id' and 'suggestion'; may include 'issue'.
@@ -91,6 +116,7 @@ def refine_report(report_text: str, selected_changes: List[Dict[str, str]]) -> s
         return report_text.strip()
 
     context = _prepare_context(report_text)
+    prior_memory = _format_memory(memory)
     changes_text = "\n".join(
         f"- {c.get('id','')} {c.get('issue','')}: {c.get('suggestion','')}"
         for c in selected_changes
@@ -104,6 +130,7 @@ def refine_report(report_text: str, selected_changes: List[Dict[str, str]]) -> s
                 "Rewrite the report by incorporating ONLY the user-approved changes listed below. "
                 "Keep all other content, intent, and structure intact where possible. "
                 "Ensure every applied change is aligned with the provided constitutional context. "
+                "Use prior user history only to preserve continuity of terminology or prior topics, never to add new facts. "
                 "Do not add new arguments beyond the approved changes. "
                 "Return only the refined report text, nothing else."
             ),
@@ -113,6 +140,7 @@ def refine_report(report_text: str, selected_changes: List[Dict[str, str]]) -> s
             "content": (
                 f"Original report:\n{report_text[:8000]}\n\n"
                 f"Approved changes to apply:\n{changes_text}\n\n"
+                f"Prior user history:\n{prior_memory}\n\n"
                 f"Reference context:\n{context or '[no matching context found]'}"
             ),
         },

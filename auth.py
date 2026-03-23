@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta
-from typing import Generator, Optional
+from typing import Any, Generator, Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
@@ -10,9 +10,9 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Column, Integer, String, create_engine, select
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, create_engine, desc, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
 
 # Load environment for SECRET_KEY and database path if provided
 load_dotenv()
@@ -44,6 +44,43 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     role = Column(String, default="user", nullable=False)
+    conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String, nullable=False, default="Untitled conversation")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user = relationship("User", back_populates="conversations")
+    messages = relationship(
+        "ConversationMessage",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="ConversationMessage.created_at",
+    )
+
+
+class ConversationMessage(Base):
+    __tablename__ = "conversation_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
+    role = Column(String, nullable=False)
+    kind = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    conversation = relationship("Conversation", back_populates="messages")
 
 
 def create_db() -> None:
@@ -76,6 +113,27 @@ class UserOut(BaseModel):
     username: str
     email: EmailStr
     role: str
+
+    class Config:
+        from_attributes = True
+
+
+class ConversationOut(BaseModel):
+    id: int
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ConversationMessageOut(BaseModel):
+    id: int
+    role: str
+    kind: str
+    content: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -161,3 +219,99 @@ def create_user(db: Session, user_in: UserCreate) -> User:
         raise HTTPException(status_code=400, detail="Username or email already registered")
     db.refresh(new_user)
     return new_user
+
+
+def _derive_title(seed_text: str) -> str:
+    cleaned = " ".join(seed_text.split()).strip()
+    if not cleaned:
+        return "Untitled conversation"
+    return cleaned[:77] + "..." if len(cleaned) > 80 else cleaned
+
+
+def create_conversation(db: Session, user: User, title: Optional[str] = None, seed_text: str = "") -> Conversation:
+    conversation = Conversation(
+        user_id=user.id,
+        title=(title or "").strip() or _derive_title(seed_text),
+    )
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+def touch_conversation(db: Session, conversation: Conversation) -> Conversation:
+    conversation.updated_at = datetime.utcnow()
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+def get_conversation_for_user(db: Session, user: User, conversation_id: int) -> Conversation:
+    stmt = select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user.id)
+    conversation = db.execute(stmt).scalars().first()
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conversation
+
+
+def list_conversations(db: Session, user: User) -> list[Conversation]:
+    stmt = (
+        select(Conversation)
+        .where(Conversation.user_id == user.id)
+        .order_by(desc(Conversation.updated_at), desc(Conversation.created_at))
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def list_conversation_messages(db: Session, conversation: Conversation) -> list[ConversationMessage]:
+    stmt = (
+        select(ConversationMessage)
+        .where(ConversationMessage.conversation_id == conversation.id)
+        .order_by(ConversationMessage.created_at, ConversationMessage.id)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def append_conversation_message(
+    db: Session,
+    conversation: Conversation,
+    role: str,
+    kind: str,
+    content: str,
+) -> ConversationMessage:
+    message = ConversationMessage(
+        conversation_id=conversation.id,
+        role=role,
+        kind=kind,
+        content=content,
+    )
+    db.add(message)
+    conversation.updated_at = datetime.utcnow()
+    db.add(conversation)
+    db.commit()
+    db.refresh(message)
+    return message
+
+
+def get_recent_user_memory(db: Session, user: User, limit: int = 8) -> list[dict[str, Any]]:
+    stmt = (
+        select(ConversationMessage, Conversation.title)
+        .join(Conversation, Conversation.id == ConversationMessage.conversation_id)
+        .where(Conversation.user_id == user.id)
+        .order_by(desc(ConversationMessage.created_at), desc(ConversationMessage.id))
+        .limit(limit)
+    )
+    rows = db.execute(stmt).all()
+    memory: list[dict[str, Any]] = []
+    for message, title in reversed(rows):
+        memory.append(
+            {
+                "conversation_title": title,
+                "role": message.role,
+                "kind": message.kind,
+                "content": message.content,
+                "created_at": message.created_at.isoformat() if message.created_at else None,
+            }
+        )
+    return memory

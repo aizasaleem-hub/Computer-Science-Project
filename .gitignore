@@ -4,10 +4,17 @@
 *.env
 
 # python virtual environments
-venv/
-venv/
+.venv/
+.venv/
 env/
 ENV/
+.venv/
+__pycache__/
+*.py[cod]
+
+# frontend
+node_modules/
+dist/
 
 # sqlite db
 app.db
